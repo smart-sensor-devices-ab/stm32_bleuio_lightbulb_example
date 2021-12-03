@@ -9,7 +9,6 @@
 
 # Linker output
 *.ilk
-*.map
 *.exp
 
 # Precompiled Headers
@@ -61,5 +60,3 @@ types_c.taghl
 #CtrlP
 ctrlp.root
 
-#html
-*.html
