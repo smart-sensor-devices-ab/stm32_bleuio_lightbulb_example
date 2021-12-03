@@ -79,7 +79,9 @@ void USBH_CDC_ReceiveCallback(USBH_HandleTypeDef *phost)
   		rx_size = USBH_CDC_GetLastReceivedDataSize(phost);
 		HAL_UART_Transmit(&huart3, CDC_RX_Buffer, rx_size, HAL_MAX_DELAY);
 
+		// Copy buffer to external dongle_response buffer
 		strcpy((char *)dongle_response, (char *)CDC_RX_Buffer);
+
 		memset(CDC_RX_Buffer,0,RX_BUFF_SIZE);
 		USBH_CDC_Receive(phost, CDC_RX_Buffer, RX_BUFF_SIZE);
   	}

@@ -32,7 +32,7 @@
 #include "stm32h7xx_hal.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+ void writeToDongle(uint8_t * cmd);
 /* USER CODE END INCLUDE */
 
 /** @addtogroup USBH_OTG_DRIVER
@@ -73,7 +73,6 @@ void MX_USB_HOST_Init(void);
 
 void MX_USB_HOST_Process(void);
 
-void writeToDongle(uint8_t * cmd);
 /**
   * @}
   */

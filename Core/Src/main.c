@@ -47,6 +47,8 @@ typedef enum {
 #define DONGLE_CMD_ATI "ATI\r\n"
 #define DONGLE_CMD_AT_ADVSTART "AT+ADVSTART\r\n"
 #define DONGLE_CMD_AT_ADVSTOP "AT+ADVSTOP\r\n"
+#define DONGLE_SEND_LIGHT_ON "AT+SPSSEND=LIGHT ON\r\n"
+#define DONGLE_SEND_LIGHT_OFF "AT+SPSSEND=LIGHT OFF\r\n"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -156,6 +158,9 @@ int main(void)
   // Starts uart recieve interrupt mode
   HAL_UART_Receive_IT(&huart3, (uint8_t *)aRxBuffer, RXBUFFERSIZE);
 
+  // Turn Light bulb pin low (off)
+  HAL_GPIO_WritePin(Lightbulb_GPIO_Port, Lightbulb_Pin, GPIO_PIN_RESET);
+
   // Turns on all LEDs on start up
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET);
@@ -167,7 +172,7 @@ int main(void)
   HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_RESET);
 
   // Sends welcome message to uart
-  uart_buf_len = sprintf(uart_tx_buf, "\r\nWelcome to STM32 BleuIO Light Bulb Example!\r\nPress 0 to run the ATI command\r\nPress 1 to start advertising\r\nPress 2 to stop advertising\r\n");
+  uart_buf_len = sprintf(uart_tx_buf, "\r\nWelcome to STM32 BleuIO Light Bulb Example!\r\nPress 0 to run the ATI command\r\nPress 1 to manually turn on light bulb\r\nPress 2 to manually turn off light bulb\r\n");
   HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
 
   /* USER CODE END 2 */
@@ -178,14 +183,17 @@ int main(void)
   {
     /* USER CODE END WHILE */
     MX_USB_HOST_Process();
+
     /* USER CODE BEGIN 3 */
     // Simple handler for uart input
     handleUartInput(uartStatus);
+    // Inteprets the dongle data
     dongle_interpreter(dongle_response);
 
-
+    // Starts advertising as soon as the Dongle is ready.
     if(!isAdvertising && !isConnected && isBleuIOReady)
     {
+    	HAL_Delay(200);
     	writeToDongle((uint8_t*)DONGLE_CMD_AT_ADVSTART);
     	isAdvertising = true;
     }
@@ -357,13 +365,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, Lightbulb_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin, GPIO_PIN_RESET);
@@ -371,8 +382,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_OTG_FS_PWR_EN_GPIO_Port, USB_OTG_FS_PWR_EN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pins : Lightbulb_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = Lightbulb_Pin|LD2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -399,13 +414,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OTG_FS_OVCR_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
 }
 
@@ -473,32 +481,19 @@ void handleUartInput(UARTCommandTypeDef cmd)
 		case UART_RX_1:
 		{
 			// 1
-			uart_buf_len = sprintf(uart_tx_buf, "\r\n(1 pressed)\r\n");
+			uart_buf_len = sprintf(uart_tx_buf, "\r\n(1 pressed light bulb on!)\r\n");
 			HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
-			if(isBleuIOReady)
-			{
-				writeToDongle((uint8_t*)DONGLE_CMD_AT_ADVSTART);
-			} else
-			{
-				uart_buf_len = sprintf(uart_tx_buf, BLEUIO_NOT_READY_MSG);
-				HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
-			}
+			HAL_GPIO_WritePin(Lightbulb_GPIO_Port, Lightbulb_Pin, GPIO_PIN_SET);
 			uartStatus = UART_RX_NONE;
 			break;
 		}
 		case UART_RX_2:
 		{
 			// 2
-			uart_buf_len = sprintf(uart_tx_buf, "\r\n(2 pressed)\r\n");
+			uart_buf_len = sprintf(uart_tx_buf, "\r\n(2 pressed light bulb off!)\r\n");
 			HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
-			if(isBleuIOReady)
-			{
-				writeToDongle((uint8_t*)DONGLE_CMD_AT_ADVSTOP);
-			} else
-			{
-				uart_buf_len = sprintf(uart_tx_buf, BLEUIO_NOT_READY_MSG);
-				HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
-			}
+			HAL_GPIO_WritePin(Lightbulb_GPIO_Port, Lightbulb_Pin, GPIO_PIN_RESET);
+
 			uartStatus = UART_RX_NONE;
 			break;
 		}
@@ -514,7 +509,10 @@ void handleUartInput(UARTCommandTypeDef cmd)
 	}
 }
 
-
+/**
+  * @brief Simple dongle interpreter
+  * @retval None
+  */
 void dongle_interpreter(uint8_t * input)
 {
 
@@ -531,26 +529,31 @@ void dongle_interpreter(uint8_t * input)
 		if(strstr((char *)input, "\r\nCONNECTED") != NULL)
 		{
 			isConnected = true;
+			HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET);
 		}
 		if(strstr((char *)input, "\r\nDISCONNECTED") != NULL)
 		{
 			isConnected = false;
+			HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_RESET);
 		}
-		if(strstr((char *)input, "[Received]:") != NULL)
+		if(strstr((char *)input, "L=0") != NULL)
 		{
-			isLightBulbOn = !isLightBulbOn;
-			if(isLightBulbOn)
-			{
-				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
-				  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET);
-				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
-			} else
-			{
-				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
-				  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_RESET);
-				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
-			}
-			uart_buf_len = sprintf(uart_tx_buf, "\r\nLightbulb is %s\r\n", isLightBulbOn ? "on":"off");
+			isLightBulbOn = false;
+			HAL_GPIO_WritePin(Lightbulb_GPIO_Port, Lightbulb_Pin, GPIO_PIN_RESET);
+
+			writeToDongle((uint8_t*)DONGLE_SEND_LIGHT_OFF);
+
+			uart_buf_len = sprintf(uart_tx_buf, "\r\nLight bulb is %s\r\n", isLightBulbOn ? "on":"off");
+			HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
+		}
+		if(strstr((char *)input, "L=1") != NULL)
+		{
+			isLightBulbOn = true;
+			HAL_GPIO_WritePin(Lightbulb_GPIO_Port, Lightbulb_Pin, GPIO_PIN_SET);
+
+			writeToDongle((uint8_t*)DONGLE_SEND_LIGHT_ON);
+
+			uart_buf_len = sprintf(uart_tx_buf, "\r\nLight bulb is %s\r\n", isLightBulbOn ? "on":"off");
 			HAL_UART_Transmit(&huart3, (uint8_t *)uart_tx_buf, uart_buf_len, HAL_MAX_DELAY);
 		}
 	}
